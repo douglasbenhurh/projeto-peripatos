@@ -141,7 +141,7 @@ const AdminObraForm = () => {
                 const optimizedQuery = await generateImageSearchQuery(formData.titulo);
                 console.log(`🔍 Query original: "${formData.titulo}" | Otimizada: "${optimizedQuery}"`);
                 query = optimizedQuery;
-            } catch (e) {
+            } catch {
                 console.warn('Falha ao otimizar query, usando título original');
             }
 

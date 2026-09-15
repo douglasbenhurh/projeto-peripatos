@@ -109,7 +109,7 @@ const LabelGenerator = () => {
 
             {/* Label Preview / Print Area */}
             <div ref={printRef} className="print-area grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2 print:gap-4 print:w-full">
-                {labels.map((label, index) => (
+                {labels.map((label) => (
                     <div
                         key={label.id}
                         className="label-container bg-white border-2 border-gray-200 flex flex-col items-center justify-center p-6 text-center shadow-lg mx-auto"

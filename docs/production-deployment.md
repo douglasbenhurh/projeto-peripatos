@@ -52,13 +52,15 @@ Se você nunca fez deploy desta máquina ou se o arquivo `.firebaserc` não exis
 Com o build pronto e o Firebase conectado, envie os arquivos para a nuvem.
 
 ```powershell
-npx firebase deploy --only hosting
+npm run deploy
 ```
+
+> **Nota:** Este comando executa `firebase deploy --only hosting` por baixo dos panos.
 
 Se você também alterou regras de segurança (Firestore/Storage) ou índices, pode rodar o deploy completo:
 
 ```powershell
-npx firebase deploy
+npm run firebase -- deploy
 ```
 
 ---
@@ -77,7 +79,7 @@ Acesse o link e verifique se a aplicação está rodando corretamente em produç
 Sempre que quiser atualizar a versão em produção:
 
 1.  `npm run build`
-2.  `npx firebase deploy --only hosting`
+2.  `npm run deploy`
 
 ---
 **Projeto Peripatos** • *Docs de Deploy*
