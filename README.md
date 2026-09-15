@@ -35,10 +35,15 @@ O **Peripatos** (do grego *περίπατος*, "passeio filosófico") é um sis
 
 #### 🔐 **Módulo Administrativo - O Escriba**
 - **Painel de gestão completo (CRUD)** de obras
+- **Impressão em lote** de etiquetas QR Code (6 por página)
 - Upload de imagens e áudios para **Cloudinary**
-- **Gerador de etiquetas QR Code** para impressão
 - Autenticação segura via **Firebase Authentication**
-- Layout otimizado para gerenciamento eficiente
+- Layout responsivo e otimizado para mobile
+
+#### 📱 **Melhorias na Experiência do Usuário**
+- **Localização da obra** exibida na tela de detalhes
+- **Compartilhamento nativo** (WhatsApp, etc.) e **Salvar como PDF**
+- Player de áudio condicional (só aparece se houver áudio)
 
 ---
 

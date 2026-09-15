@@ -48,6 +48,28 @@ const Obra = () => {
         fetchObra();
     }, [id]);
 
+    const handleShare = async () => {
+        if (navigator.share) {
+            try {
+                await navigator.share({
+                    title: obra.titulo,
+                    text: `Confira esta obra: ${obra.titulo}`,
+                    url: window.location.href,
+                });
+            } catch (error) {
+                console.log('Erro ao compartilhar:', error);
+            }
+        } else {
+            // Fallback: Copy to clipboard
+            navigator.clipboard.writeText(window.location.href);
+            alert('Link copiado para a área de transferência!');
+        }
+    };
+
+    const handlePrint = () => {
+        window.print();
+    };
+
     if (!id) {
         return (
             <Layout>
@@ -88,11 +110,21 @@ const Obra = () => {
 
     return (
         <Layout>
-            <article className="flex flex-col items-center">
+            <article className="flex flex-col items-center max-w-4xl mx-auto w-full">
                 {/* Header da Obra */}
-                <h2 className="text-2xl md:text-3xl font-serif font-bold text-brand-green mb-6 text-center">
-                    {obra.titulo}
-                </h2>
+                <div className="text-center mb-6">
+                    <h2 className="text-2xl md:text-4xl font-serif font-bold text-brand-green mb-2">
+                        {obra.titulo}
+                    </h2>
+                    {obra.localizacao && (
+                        <p className="text-gray-600 font-medium flex items-center justify-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                            </svg>
+                            {obra.localizacao}
+                        </p>
+                    )}
+                </div>
 
                 {/* Imagem */}
                 <div className="w-full mb-8 relative group">
@@ -127,7 +159,7 @@ const Obra = () => {
                     <img
                         src={obra.imagemUrl}
                         alt={obra.titulo}
-                        className={`w-full h-auto rounded-lg shadow-md object-cover max-h-[400px] ${imageLoading || imageError ? 'hidden' : 'block'}`}
+                        className={`w-full h-auto rounded-lg shadow-md object-cover max-h-[500px] ${imageLoading || imageError ? 'hidden' : 'block'}`}
                         onLoad={() => setImageLoading(false)}
                         onError={() => {
                             setImageError(true);
@@ -136,23 +168,77 @@ const Obra = () => {
                     />
                 </div>
 
-                {/* Player */}
-                <div className="w-full mb-8">
-                    <AudioPlayer
-                        src={obra.audioUrl}
-                        onTimeUpdate={setCurrentTime}
-                    />
-                </div>
+                {/* Player e Transcrição (Condicional) */}
+                {obra.audioUrl ? (
+                    <>
+                        <div className="w-full mb-8 print:hidden">
+                            <AudioPlayer
+                                src={obra.audioUrl}
+                                onTimeUpdate={setCurrentTime}
+                            />
+                        </div>
 
-                {/* Texto / Transcrição */}
-                <div className="w-full bg-gray-50 p-6 rounded-lg border border-gray-100">
-                    <SynchronizedText
-                        text={obra.transcricao || obra.descricao || ''}
-                        currentTime={currentTime}
-                        timestamps={obra.timestamps || []}
-                    />
+                        <div className="w-full bg-gray-50 p-6 rounded-lg border border-gray-100 mb-8">
+                            <SynchronizedText
+                                text={obra.transcricao || obra.descricao || ''}
+                                currentTime={currentTime}
+                                timestamps={obra.timestamps || []}
+                            />
+                        </div>
+                    </>
+                ) : (
+                    <div className="w-full bg-gray-50 p-6 rounded-lg border border-gray-100 mb-8">
+                        <p className="text-gray-800 leading-relaxed whitespace-pre-wrap font-serif text-lg">
+                            {obra.transcricao || obra.descricao || 'Sem descrição disponível.'}
+                        </p>
+                    </div>
+                )}
+
+                {/* Botões de Ação (Share/Print) */}
+                <div className="flex gap-4 mb-12 print:hidden">
+                    <button
+                        onClick={handleShare}
+                        className="flex items-center gap-2 px-6 py-3 bg-brand-blue text-white rounded-full font-bold shadow hover:bg-opacity-90 transition-transform hover:scale-105"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
+                        </svg>
+                        Compartilhar
+                    </button>
+                    <button
+                        onClick={handlePrint}
+                        className="flex items-center gap-2 px-6 py-3 bg-gray-800 text-white rounded-full font-bold shadow hover:bg-gray-700 transition-transform hover:scale-105"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                        Salvar PDF
+                    </button>
                 </div>
             </article>
+
+            <style>{`
+                @media print {
+                    /* Hide layout elements like navbar/footer if they are not hidden by Layout component logic (which we can't see here but assuming Layout handles basic structure) */
+                    /* We can target specific classes if needed, but 'print:hidden' utility class is best */
+                    
+                    body {
+                        background: white;
+                    }
+
+                    /* Ensure article takes full width */
+                    article {
+                        max-width: 100% !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+
+                    /* Hide buttons and player */
+                    .print\\:hidden {
+                        display: none !important;
+                    }
+                }
+            `}</style>
         </Layout>
     );
 };

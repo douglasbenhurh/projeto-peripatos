@@ -3,7 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, addDoc, updateDoc, collection } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { uploadToCloudinary } from '../cloudinary';
+import { suggestDescription, suggestLocation, generateImageSearchQuery } from '../services/gemini_service';
+import { searchImage, trackDownload, urlToFile } from '../services/unsplash_service';
 import Layout from '../components/Layout';
+import AiSuggestionModal from '../components/AiSuggestionModal';
+import ImageSearchModal from '../components/ImageSearchModal';
 
 const AdminObraForm = () => {
     const { id } = useParams();
@@ -25,6 +29,16 @@ const AdminObraForm = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
+    // AI Suggestion states
+    const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+    const [showLocationModal, setShowLocationModal] = useState(false);
+    const [showImageSearchModal, setShowImageSearchModal] = useState(false);
+    const [aiSuggestion, setAiSuggestion] = useState('');
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState(null);
+    const [imageSearchData, setImageSearchData] = useState(null);
+    const [imageSearchPage, setImageSearchPage] = useState(1);
+
     useEffect(() => {
         const fetchObra = async () => {
             if (isEditing) {
@@ -44,10 +58,6 @@ const AdminObraForm = () => {
                         // Carregar URLs de mídia existentes
                         setCurrentImageUrl(data.imagemUrl || '');
                         setCurrentAudioUrl(data.audioUrl || '');
-                        console.log('📂 URLs de mídia carregadas:', {
-                            imagem: data.imagemUrl,
-                            audio: data.audioUrl
-                        });
                     } else {
                         setError('Obra não encontrada');
                     }
@@ -62,6 +72,141 @@ const AdminObraForm = () => {
 
         fetchObra();
     }, [isEditing, id]);
+
+    // Handler para sugestão de descrição
+    const handleSuggestDescription = async () => {
+        if (!formData.titulo || formData.titulo.trim().length === 0) {
+            setError('Por favor, preencha o título primeiro');
+            return;
+        }
+
+        setShowDescriptionModal(true);
+        setAiLoading(true);
+        setAiError(null);
+        setAiSuggestion('');
+
+        try {
+            const suggestion = await suggestDescription(formData.titulo);
+            setAiSuggestion(suggestion);
+        } catch (err) {
+            setAiError(err.message);
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    // Handler para sugestão de localização
+    const handleSuggestLocation = async () => {
+        if (!formData.titulo || formData.titulo.trim().length === 0) {
+            setError('Por favor, preencha o título primeiro');
+            return;
+        }
+
+        setShowLocationModal(true);
+        setAiLoading(true);
+        setAiError(null);
+        setAiSuggestion('');
+
+        try {
+            const suggestion = await suggestLocation(formData.titulo);
+            setAiSuggestion(suggestion);
+        } catch (err) {
+            setAiError(err.message);
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    // Handler para busca de imagem
+    const handleSearchImage = async (page = 1) => {
+        if (!formData.titulo || formData.titulo.trim().length === 0) {
+            setError('Por favor, preencha o título primeiro');
+            return;
+        }
+
+        setShowImageSearchModal(true);
+        setAiLoading(true);
+        setAiError(null);
+        setImageSearchPage(page);
+
+        if (page === 1) {
+            setImageSearchData(null);
+        }
+
+        try {
+            // 1. Gera query otimizada com IA
+            let query = formData.titulo;
+
+            try {
+                const optimizedQuery = await generateImageSearchQuery(formData.titulo);
+                console.log(`🔍 Query original: "${formData.titulo}" | Otimizada: "${optimizedQuery}"`);
+                query = optimizedQuery;
+            } catch (e) {
+                console.warn('Falha ao otimizar query, usando título original');
+            }
+
+            // 2. Busca no Unsplash com a query otimizada
+            const result = await searchImage(query, page);
+            setImageSearchData(result);
+        } catch (err) {
+            setAiError(err.message);
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    const handleNextImage = () => {
+        handleSearchImage(imageSearchPage + 1);
+    };
+
+    // Confirmar sugestão de descrição
+    const handleConfirmDescription = (suggestion) => {
+        setFormData(prev => ({ ...prev, descricao: suggestion }));
+        setShowDescriptionModal(false);
+        setAiSuggestion('');
+    };
+
+    // Confirmar sugestão de localização
+    const handleConfirmLocation = (suggestion) => {
+        setFormData(prev => ({ ...prev, localizacao: suggestion }));
+        setShowLocationModal(false);
+        setAiSuggestion('');
+    };
+
+    // Confirmar seleção de imagem
+    const handleConfirmImage = async (imageData) => {
+        try {
+            setAiLoading(true);
+
+            // Registrar download (requisito do Unsplash)
+            if (imageData.downloadLink) {
+                await trackDownload(imageData.downloadLink);
+            }
+
+            // Converter URL em File object
+            const imageFile = await urlToFile(imageData.downloadUrl, `unsplash-${imageData.id}.jpg`);
+            setSelectedImage(imageFile);
+
+            setShowImageSearchModal(false);
+            setImageSearchData(null);
+            setImageSearchPage(1);
+        } catch (err) {
+            setAiError('Erro ao processar imagem: ' + err.message);
+        } finally {
+            setAiLoading(false);
+        }
+    };
+
+    // Cancelar modais de IA
+    const handleCancelAiModal = () => {
+        setShowDescriptionModal(false);
+        setShowLocationModal(false);
+        setShowImageSearchModal(false);
+        setAiSuggestion('');
+        setAiError(null);
+        setImageSearchData(null);
+        setImageSearchPage(1);
+    };
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -87,11 +232,6 @@ const AdminObraForm = () => {
         setLoading(true);
         setError(null);
 
-        console.log('🔵 Iniciando salvamento de obra...');
-        console.log('📋 Dados do formulário:', formData);
-        console.log('📷 Imagem selecionada:', selectedImage?.name);
-        console.log('🎵 Áudio selecionado:', selectedAudio?.name);
-
         if (!auth.currentUser) {
             setError('Você precisa estar autenticado para realizar esta ação. Por favor, faça login novamente.');
             setLoading(false);
@@ -104,16 +244,12 @@ const AdminObraForm = () => {
 
             // Upload de imagem para o Cloudinary
             if (selectedImage) {
-                console.log('🔵 Iniciando upload de imagem...');
                 imagemUrl = await uploadToCloudinary(selectedImage, 'image');
-                console.log('✅ Imagem enviada:', imagemUrl);
             }
 
             // Upload de áudio para o Cloudinary
             if (selectedAudio) {
-                console.log('🔵 Iniciando upload de áudio...');
-                audioUrl = await uploadToCloudinary(selectedAudio, 'video'); // Cloudinary usa 'video' para áudios
-                console.log('✅ Áudio enviado:', audioUrl);
+                audioUrl = await uploadToCloudinary(selectedAudio, 'video');
             }
 
             // Preparar dados para salvar
@@ -122,32 +258,19 @@ const AdminObraForm = () => {
                 descricao: formData.descricao,
                 localizacao: formData.localizacao,
                 transcricao: formData.texto,
-                // Preservar URLs: usar novo upload OU manter existente
                 imagemUrl: imagemUrl || currentImageUrl,
                 audioUrl: audioUrl || currentAudioUrl,
                 updatedAt: new Date(),
             };
 
-            console.log('💾 URLs finais a salvar:', {
-                imagem: obraData.imagemUrl,
-                audio: obraData.audioUrl
-            });
-
-            console.log('🔵 Salvando no Firestore:', obraData);
-
             if (isEditing) {
-                // Atualizar obra existente
                 const docRef = doc(db, 'obras', id);
                 await updateDoc(docRef, obraData);
-                console.log('✅ Obra atualizada com sucesso:', id);
             } else {
-                // Criar nova obra
                 obraData.createdAt = new Date();
-                const docRef = await addDoc(collection(db, 'obras'), obraData);
-                console.log('✅ Nova obra criada com sucesso. ID:', docRef.id);
+                await addDoc(collection(db, 'obras'), obraData);
             }
 
-            // Redirecionar para o dashboard
             navigate('/admin');
         } catch (err) {
             console.error('❌ Erro ao salvar obra:', err);
@@ -177,7 +300,6 @@ const AdminObraForm = () => {
                 </h2>
             </div>
 
-            {/* Error Message */}
             {error && (
                 <div className="bg-red-50 border border-brand-red text-brand-red px-4 py-3 rounded mb-6">
                     {error}
@@ -203,25 +325,47 @@ const AdminObraForm = () => {
 
                 {/* Localização */}
                 <div>
-                    <label className="block text-brand-green text-sm font-bold mb-2" htmlFor="localizacao">
-                        Localização
-                    </label>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="block text-brand-green text-sm font-bold" htmlFor="localizacao">
+                            Localização
+                        </label>
+                        <button
+                            type="button"
+                            onClick={handleSuggestLocation}
+                            disabled={!formData.titulo || formData.titulo.trim().length === 0}
+                            className="text-xs bg-brand-yellow hover:bg-opacity-80 text-brand-green font-semibold py-1 px-3 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        >
+                            <span>✨</span>
+                            Sugerir com IA
+                        </button>
+                    </div>
                     <input
                         className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-brand-green"
                         id="localizacao"
                         name="localizacao"
                         type="text"
-                        placeholder="Ex: Jardim Central"
                         value={formData.localizacao}
                         onChange={handleChange}
+                        placeholder="Ex: Jardim Central, Hall Principal"
                     />
                 </div>
 
                 {/* Descrição Curta */}
                 <div>
-                    <label className="block text-brand-green text-sm font-bold mb-2" htmlFor="descricao">
-                        Descrição Curta
-                    </label>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="block text-brand-green text-sm font-bold" htmlFor="descricao">
+                            Descrição Curta
+                        </label>
+                        <button
+                            type="button"
+                            onClick={handleSuggestDescription}
+                            disabled={!formData.titulo || formData.titulo.trim().length === 0}
+                            className="text-xs bg-brand-yellow hover:bg-opacity-80 text-brand-green font-semibold py-1 px-3 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        >
+                            <span>✨</span>
+                            Sugerir com IA
+                        </button>
+                    </div>
                     <textarea
                         className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-brand-green"
                         id="descricao"
@@ -232,161 +376,196 @@ const AdminObraForm = () => {
                     />
                 </div>
 
-                {/* Upload de Imagem */}
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-                    <p className="text-gray-500 mb-2 text-center">Imagem da Obra</p>
+                {/* Imagem */}
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <div className="flex justify-between items-center mb-4">
+                        <label className="block text-brand-green text-sm font-bold">
+                            Imagem da Obra
+                        </label>
+                        <button
+                            type="button"
+                            onClick={() => handleSearchImage(1)}
+                            disabled={!formData.titulo || formData.titulo.trim().length === 0}
+                            className="text-xs bg-brand-yellow hover:bg-opacity-80 text-brand-green font-semibold py-1 px-3 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        >
+                            <span>🔍</span>
+                            Buscar Imagem
+                        </button>
+                    </div>
 
-                    {/* Preview da imagem existente */}
-                    {isEditing && currentImageUrl && !selectedImage && (
+                    {currentImageUrl && !selectedImage && (
                         <div className="mb-4">
+                            <p className="text-sm text-gray-500 mb-2">Imagem Atual:</p>
+                            <img src={currentImageUrl} alt="Atual" className="h-32 mx-auto object-cover rounded" />
+                        </div>
+                    )}
+
+                    {selectedImage && (
+                        <div className="mb-4">
+                            <p className="text-sm text-brand-green font-semibold mb-2">Nova imagem selecionada:</p>
                             <div className="relative inline-block">
                                 <img
-                                    src={currentImageUrl}
-                                    alt="Imagem atual"
-                                    className="h-32 w-auto rounded-lg shadow-md border-2 border-brand-green"
+                                    src={URL.createObjectURL(selectedImage)}
+                                    alt="Preview"
+                                    className="h-32 mx-auto object-cover rounded border-2 border-brand-green"
                                 />
-                                <span className="absolute top-0 right-0 bg-brand-green text-white text-xs px-2 py-1 rounded-bl-lg rounded-tr-lg">
-                                    Atual
-                                </span>
-                            </div>
-                            <p className="text-xs text-gray-600 mt-2">Imagem armazenada • Selecione nova para substituir</p>
-                        </div>
-                    )}
-
-                    <div className="text-center">
-                        <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            id="image-upload"
-                            onChange={handleImageChange}
-                        />
-                        <label
-                            htmlFor="image-upload"
-                            className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded inline-block transition-colors"
-                        >
-                            {currentImageUrl ? 'Substituir Imagem' : 'Escolher Arquivo'}
-                        </label>
-                        {selectedImage && (
-                            <p className="text-sm text-brand-green mt-2 font-medium">
-                                ✓ {selectedImage.name}
-                            </p>
-                        )}
-                    </div>
-                </div>
-
-                {/* Upload de Áudio */}
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-                    <p className="text-gray-500 mb-2 text-center">Áudio Explicativo</p>
-
-                    {/* Preview do áudio existente */}
-                    {isEditing && currentAudioUrl && !selectedAudio && (
-                        <div className="mb-4 bg-gray-50 p-4 rounded-lg border border-brand-green">
-                            <div className="flex items-center gap-3">
-                                <div className="flex-shrink-0">
-                                    <svg className="w-10 h-10 text-brand-green" fill="currentColor" viewBox="0 0 20 20">
-                                        <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedImage(null)}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                    title="Remover imagem"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                                     </svg>
-                                </div>
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-xs font-semibold text-white bg-brand-green px-2 py-0.5 rounded">
-                                            Áudio Atual
-                                        </span>
-                                    </div>
-                                    <audio
-                                        controls
-                                        src={currentAudioUrl}
-                                        className="w-full h-8"
-                                        style={{ maxWidth: '100%' }}
-                                    />
-                                    <p className="text-xs text-gray-600 mt-1">Áudio armazenado • Selecione novo para substituir</p>
-                                </div>
+                                </button>
                             </div>
+                            <p className="text-xs text-gray-500 mt-1">{selectedImage.name}</p>
                         </div>
                     )}
 
-                    <div className="text-center">
-                        <input
-                            type="file"
-                            accept="audio/*"
-                            className="hidden"
-                            id="audio-upload"
-                            onChange={handleAudioChange}
-                        />
-                        <label
-                            htmlFor="audio-upload"
-                            className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded inline-block transition-colors"
-                        >
-                            {currentAudioUrl ? 'Substituir Áudio' : 'Escolher Arquivo'}
-                        </label>
-                        {selectedAudio && (
-                            <p className="text-sm text-brand-green mt-2 font-medium">
-                                ✓ {selectedAudio.name}
-                            </p>
-                        )}
-                    </div>
+                    <input
+                        type="file"
+                        id="imagem"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        className="hidden"
+                    />
+                    <label
+                        htmlFor="imagem"
+                        className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded inline-block transition-colors"
+                    >
+                        Escolher Arquivo
+                    </label>
                 </div>
 
-                {/* Transcrição / Texto Completo */}
+                {/* Áudio */}
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <label className="block text-brand-green text-sm font-bold mb-4">
+                        Áudio Explicativo
+                    </label>
+
+                    {currentAudioUrl && !selectedAudio && (
+                        <div className="mb-4">
+                            <p className="text-sm text-gray-500 mb-2">Áudio Atual:</p>
+                            <audio controls src={currentAudioUrl} className="mx-auto" />
+                        </div>
+                    )}
+
+                    {selectedAudio && (
+                        <div className="mb-4">
+                            <p className="text-sm text-brand-green font-semibold">Novo áudio selecionado:</p>
+                            <p className="text-xs text-gray-500">{selectedAudio.name}</p>
+                        </div>
+                    )}
+
+                    <input
+                        type="file"
+                        id="audio"
+                        accept="audio/*"
+                        onChange={handleAudioChange}
+                        className="hidden"
+                    />
+                    <label
+                        htmlFor="audio"
+                        className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded inline-block transition-colors"
+                    >
+                        Escolher Arquivo
+                    </label>
+                </div>
+
+                {/* Texto/Transcrição */}
                 <div>
                     <label className="block text-brand-green text-sm font-bold mb-2" htmlFor="texto">
                         Texto / Transcrição
                     </label>
                     <textarea
-                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-brand-green font-sans"
+                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-brand-green"
                         id="texto"
                         name="texto"
                         rows="10"
                         value={formData.texto}
                         onChange={handleChange}
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                        * A sincronização automática será gerada após o upload do áudio (Mock).
-                    </p>
                 </div>
 
-                {/* Buttons - Reorganized: Cancel left, Save right */}
-                <div className="flex justify-between pt-4">
+                {/* Botões de Ação */}
+                <div className="flex items-center justify-end gap-4">
                     <button
                         type="button"
                         onClick={handleCancelClick}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-8 rounded focus:outline-none focus:shadow-outline transition-colors"
+                        className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors"
+                        disabled={loading}
                     >
                         Cancelar
                     </button>
                     <button
-                        className="bg-brand-green hover:bg-opacity-90 text-white font-bold py-3 px-8 rounded focus:outline-none focus:shadow-outline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         type="submit"
+                        className="bg-brand-blue hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors flex items-center gap-2"
                         disabled={loading}
                     >
+                        {loading && (
+                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        )}
                         {loading ? 'Salvando...' : 'Salvar Obra'}
                     </button>
                 </div>
             </form>
 
+            {/* Modais */}
+            <AiSuggestionModal
+                isOpen={showDescriptionModal}
+                title="Sugestão de Descrição"
+                suggestion={aiSuggestion}
+                loading={aiLoading}
+                error={aiError}
+                onConfirm={handleConfirmDescription}
+                onCancel={handleCancelAiModal}
+            />
+
+            <AiSuggestionModal
+                isOpen={showLocationModal}
+                title="Sugestão de Localização"
+                suggestion={aiSuggestion}
+                loading={aiLoading}
+                error={aiError}
+                onConfirm={handleConfirmLocation}
+                onCancel={handleCancelAiModal}
+            />
+
+            <ImageSearchModal
+                isOpen={showImageSearchModal}
+                imageData={imageSearchData}
+                loading={aiLoading}
+                error={aiError}
+                onSelectImage={handleConfirmImage}
+                onNext={handleNextImage}
+                onCancel={handleCancelAiModal}
+            />
+
             {/* Cancel Confirmation Modal */}
             {showCancelModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-                        <h3 className="text-xl font-serif font-bold text-brand-green mb-4">
-                            Deseja realmente cancelar?
-                        </h3>
-                        <p className="text-gray-700 mb-6">
-                            Todas as alterações não salvas serão perdidas. Tem certeza que deseja cancelar?
+                    <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl">
+                        <h3 className="text-lg font-bold text-gray-900 mb-4">Descartar alterações?</h3>
+                        <p className="text-gray-600 mb-6">
+                            Se você sair agora, todas as alterações não salvas serão perdidas.
                         </p>
                         <div className="flex justify-end gap-3">
                             <button
                                 onClick={dismissCancelModal}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors font-medium"
+                                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium"
                             >
                                 Continuar Editando
                             </button>
                             <button
                                 onClick={confirmCancel}
-                                className="px-4 py-2 bg-brand-red text-white rounded hover:bg-red-700 transition-colors font-medium"
+                                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-medium"
                             >
-                                Sim, Cancelar
+                                Descartar
                             </button>
                         </div>
                     </div>
