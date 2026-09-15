@@ -1,0 +1,12 @@
+{
+    "admin": {
+        "email": "admin@nova-acropole.org.br",
+        "password": "admin",
+        "name": "Administrador"
+    },
+    "tutor": {
+        "email": "tutor@nova-acropole.org.br",
+        "password": "tutor",
+        "name": "Tutor"
+    }
+}

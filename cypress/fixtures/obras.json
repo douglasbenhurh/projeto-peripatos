@@ -1,0 +1,26 @@
+[
+    {
+        "id": "1",
+        "titulo": "O Pensador",
+        "descricao": "Uma das mais famosas esculturas de bronze de Auguste Rodin.",
+        "localizacao": "Jardim Central",
+        "imagemUrl": "https://example.com/pensador.jpg",
+        "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+    },
+    {
+        "id": "2",
+        "titulo": "Busto de Platão",
+        "descricao": "Representação do filósofo grego Platão.",
+        "localizacao": "Biblioteca",
+        "imagemUrl": "https://example.com/platao.jpg",
+        "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+    },
+    {
+        "id": "3",
+        "titulo": "A Escola de Atenas",
+        "descricao": "Reprodução da famosa pintura de Rafael.",
+        "localizacao": "Hall de Entrada",
+        "imagemUrl": "https://example.com/escola-atenas.jpg",
+        "audioUrl": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
+    }
+]
